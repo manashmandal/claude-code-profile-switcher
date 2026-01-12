@@ -5,6 +5,12 @@
   "type": "module",
   "license": "MIT",
   "author": "Manash Mandal",
+  "scripts": {
+    "test": "bun test",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "typecheck": "tsc --noEmit"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/manashmandal/claude-code-profile-switcher"
@@ -13,7 +19,10 @@
     "claude-profile": "./src/index.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^8.52.0",
+    "@typescript-eslint/parser": "^8.52.0",
+    "eslint": "^9.39.2"
   },
   "peerDependencies": {
     "typescript": "^5"

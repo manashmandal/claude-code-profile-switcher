@@ -11,7 +11,9 @@ CLI tool to switch Claude Code authentication profiles. Allows users to manage m
 ```bash
 bun install          # Install dependencies
 bun src/index.ts     # Run CLI directly
-bun test             # Run tests (uses bun:test)
+bun test             # Run tests
+bun run lint         # Run ESLint
+bun run typecheck    # Run TypeScript type checking
 ```
 
 ## Usage

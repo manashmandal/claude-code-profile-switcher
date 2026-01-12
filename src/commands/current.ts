@@ -1,5 +1,4 @@
 import { getActiveProfile, getProfile } from "../config";
-import { formatProfileForDisplay } from "../settings";
 
 export async function currentProfileCommand(): Promise<void> {
   const activeName = await getActiveProfile();

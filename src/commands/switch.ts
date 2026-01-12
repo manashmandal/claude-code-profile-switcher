@@ -33,7 +33,7 @@ export async function switchProfile(
     targetName = name;
   } else {
     const choices = profileNames.map((n) => {
-      const profile = config.profiles[n];
+      const profile = config.profiles[n]!;
       const typeLabel = profile.type === "max" ? "max" : "api-key";
       const activeLabel = config.active === n ? " (active)" : "";
       return {

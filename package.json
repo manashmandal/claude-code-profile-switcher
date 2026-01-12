@@ -7,7 +7,7 @@
   "author": "Manash Mandal",
   "repository": {
     "type": "git",
-    "url": "https://github.com/manashmandal/claude-profile-switcher"
+    "url": "https://github.com/manashmandal/claude-code-profile-switcher"
   },
   "bin": {
     "claude-profile": "./src/index.ts"

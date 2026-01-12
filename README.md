@@ -14,8 +14,8 @@ brew install claude-profile
 ### From source
 
 ```bash
-git clone https://github.com/manashmandal/claude-profile-switcher.git
-cd claude-profile-switcher
+git clone https://github.com/manashmandal/claude-code-profile-switcher.git
+cd claude-code-profile-switcher
 bun install
 bun link
 ```

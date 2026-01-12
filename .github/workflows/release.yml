@@ -152,13 +152,13 @@ jobs:
 
           class ClaudeProfile < Formula
             desc "CLI tool to switch Claude Code authentication profiles"
-            homepage "https://github.com/manashmandal/claude-profile-switcher"
+            homepage "https://github.com/manashmandal/claude-code-profile-switcher"
             version "${VERSION}"
             license "MIT"
 
             on_macos do
               if Hardware::CPU.intel?
-                url "https://github.com/manashmandal/claude-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_darwin_amd64.tar.gz"
+                url "https://github.com/manashmandal/claude-code-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_darwin_amd64.tar.gz"
                 sha256 "${SHA_DARWIN_AMD64}"
 
                 def install
@@ -166,7 +166,7 @@ jobs:
                 end
               end
               if Hardware::CPU.arm?
-                url "https://github.com/manashmandal/claude-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_darwin_arm64.tar.gz"
+                url "https://github.com/manashmandal/claude-code-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_darwin_arm64.tar.gz"
                 sha256 "${SHA_DARWIN_ARM64}"
 
                 def install
@@ -177,7 +177,7 @@ jobs:
 
             on_linux do
               if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-                url "https://github.com/manashmandal/claude-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_linux_amd64.tar.gz"
+                url "https://github.com/manashmandal/claude-code-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_linux_amd64.tar.gz"
                 sha256 "${SHA_LINUX_AMD64}"
 
                 def install
@@ -185,7 +185,7 @@ jobs:
                 end
               end
               if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-                url "https://github.com/manashmandal/claude-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_linux_arm64.tar.gz"
+                url "https://github.com/manashmandal/claude-code-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_linux_arm64.tar.gz"
                 sha256 "${SHA_LINUX_ARM64}"
 
                 def install

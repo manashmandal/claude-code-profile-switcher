@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Claude Profile Switcher" width="200">
+</p>
+
 # claude-profile-switcher
 
 CLI tool to switch Claude Code authentication profiles. Manage multiple Claude Code authentication methods (Max plan OAuth vs API keys) and switch between them.

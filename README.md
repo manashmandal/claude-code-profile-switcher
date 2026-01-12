@@ -36,15 +36,20 @@ claude-profile add personal --max
 ### Switch profiles
 
 ```bash
-# Switch and apply to current shell
+# Switch and apply to current shell (bash/zsh)
 eval $(claude-profile work)
 
+# Fish shell
+eval (claude-profile work)
+
 # Interactive selection
-eval $(claude-profile)
+eval $(claude-profile)  # or eval (claude-profile) in fish
 
 # Dry run (see what would happen)
 claude-profile work --dry-run
 ```
+
+The tool auto-detects your shell (fish vs bash/zsh) and outputs the correct syntax.
 
 ### Other commands
 
@@ -65,13 +70,20 @@ Profile configurations are stored in `~/.claude-profiles.json`. The tool **never
 
 ## Shell integration (optional)
 
-Add to your `~/.zshrc` or `~/.bashrc`:
+**Bash/Zsh** - Add to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-# Switch Claude profile
 cps() {
   eval $(claude-profile "$@")
 }
+```
+
+**Fish** - Add to `~/.config/fish/config.fish`:
+
+```fish
+function cps
+  eval (claude-profile $argv)
+end
 ```
 
 Then use: `cps work` or `cps personal`

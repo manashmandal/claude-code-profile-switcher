@@ -7,6 +7,7 @@ import {
 import {
   generateEnvCommands,
   generateDryRunOutput,
+  detectShell,
 } from "../settings";
 
 export async function switchProfile(
@@ -69,6 +70,11 @@ export async function switchProfile(
 
   // Info message to stderr so it doesn't interfere with eval
   const typeLabel = profile.type === "max" ? "Max plan" : "API key";
+  const shell = detectShell();
+  const evalHint = shell === "fish"
+    ? `eval (claude-profile ${targetName})`
+    : `eval $(claude-profile ${targetName})`;
+
   console.error(`Switched to profile '${targetName}' (${typeLabel})`);
-  console.error(`Run: eval $(claude-profile ${targetName})`);
+  console.error(`Run: ${evalHint}`);
 }

@@ -1,0 +1,25 @@
+{
+  "name": "claude-profile-switcher",
+  "version": "1.0.0",
+  "description": "CLI tool to switch Claude Code authentication profiles",
+  "type": "module",
+  "license": "MIT",
+  "author": "Manash Mandal",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/manashmandal/claude-profile-switcher"
+  },
+  "bin": {
+    "claude-profile": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.2.0",
+    "commander": "^14.0.2"
+  }
+}

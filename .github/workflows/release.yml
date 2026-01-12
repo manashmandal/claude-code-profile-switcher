@@ -1,0 +1,208 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: bun-darwin-x64
+            os: darwin
+            arch: amd64
+          - target: bun-darwin-arm64
+            os: darwin
+            arch: arm64
+          - target: bun-linux-x64
+            os: linux
+            arch: amd64
+          - target: bun-linux-arm64
+            os: linux
+            arch: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build binary
+        run: |
+          bun build src/index.ts --compile --target=${{ matrix.target }} --outfile=claude-profile
+
+      - name: Create tarball
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          ARCHIVE_NAME="claude-profile_${VERSION}_${{ matrix.os }}_${{ matrix.arch }}"
+          mkdir -p dist
+          tar -czvf "dist/${ARCHIVE_NAME}.tar.gz" claude-profile
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-profile-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha_darwin_amd64: ${{ steps.checksums.outputs.sha_darwin_amd64 }}
+      sha_darwin_arm64: ${{ steps.checksums.outputs.sha_darwin_arm64 }}
+      sha_linux_amd64: ${{ steps.checksums.outputs.sha_linux_amd64 }}
+      sha_linux_arm64: ${{ steps.checksums.outputs.sha_linux_arm64 }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -name '*.tar.gz' -exec mv {} release/ \;
+          ls -la release/
+
+      - name: Calculate checksums
+        id: checksums
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          cd release
+          echo "sha_darwin_amd64=$(sha256sum claude-profile_${VERSION}_darwin_amd64.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "sha_darwin_arm64=$(sha256sum claude-profile_${VERSION}_darwin_arm64.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "sha_linux_amd64=$(sha256sum claude-profile_${VERSION}_linux_amd64.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "sha_linux_arm64=$(sha256sum claude-profile_${VERSION}_linux_arm64.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+
+      - name: Create tag (manual release only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          files: release/*.tar.gz
+          generate_release_notes: true
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${{ needs.release.outputs.version }}
+          SHA_DARWIN_AMD64=${{ needs.release.outputs.sha_darwin_amd64 }}
+          SHA_DARWIN_ARM64=${{ needs.release.outputs.sha_darwin_arm64 }}
+          SHA_LINUX_AMD64=${{ needs.release.outputs.sha_linux_amd64 }}
+          SHA_LINUX_ARM64=${{ needs.release.outputs.sha_linux_arm64 }}
+
+          # Clone the homebrew tap
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/manashmandal/homebrew-tap.git
+          cd homebrew-tap
+
+          # Create/update the formula
+          cat > Formula/claude-profile.rb << EOF
+          # typed: false
+          # frozen_string_literal: true
+
+          class ClaudeProfile < Formula
+            desc "CLI tool to switch Claude Code authentication profiles"
+            homepage "https://github.com/manashmandal/claude-profile-switcher"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.intel?
+                url "https://github.com/manashmandal/claude-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_darwin_amd64.tar.gz"
+                sha256 "${SHA_DARWIN_AMD64}"
+
+                def install
+                  bin.install "claude-profile"
+                end
+              end
+              if Hardware::CPU.arm?
+                url "https://github.com/manashmandal/claude-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_darwin_arm64.tar.gz"
+                sha256 "${SHA_DARWIN_ARM64}"
+
+                def install
+                  bin.install "claude-profile"
+                end
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
+                url "https://github.com/manashmandal/claude-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_linux_amd64.tar.gz"
+                sha256 "${SHA_LINUX_AMD64}"
+
+                def install
+                  bin.install "claude-profile"
+                end
+              end
+              if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
+                url "https://github.com/manashmandal/claude-profile-switcher/releases/download/v${VERSION}/claude-profile_${VERSION}_linux_arm64.tar.gz"
+                sha256 "${SHA_LINUX_ARM64}"
+
+                def install
+                  bin.install "claude-profile"
+                end
+              end
+            end
+
+            test do
+              system "#{bin}/claude-profile", "--version"
+            end
+          end
+          EOF
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/claude-profile.rb
+          git commit -m "Update claude-profile to v${VERSION}"
+          git push

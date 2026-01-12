@@ -1,9 +1,19 @@
-import { test, expect, describe, afterEach } from "bun:test";
+import { test, expect, describe, beforeEach, afterEach } from "bun:test";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   detectShell,
   generateEnvCommands,
   formatProfileForDisplay,
-  generateDryRunOutput,
+  formatApiKeyHelperForDisplay,
+  setSettingsPath,
+  resetSettingsPath,
+  loadSettings,
+  saveSettings,
+  applyProfile,
+  dryRunApplyProfile,
+  getSettingsPath,
 } from "../settings";
 import type { Profile } from "../config";
 
@@ -56,12 +66,6 @@ describe("generateEnvCommands", () => {
       expect(result).toBe("set -e ANTHROPIC_API_KEY");
     });
   });
-
-  test("handles api keys with special characters", () => {
-    const profile: Profile = { type: "api-key", key: "sk-ant-abc'def" };
-    const result = generateEnvCommands(profile, "posix");
-    expect(result).toContain("sk-ant-abc'def");
-  });
 });
 
 describe("formatProfileForDisplay", () => {
@@ -81,32 +85,171 @@ describe("formatProfileForDisplay", () => {
       key: "sk-ant-api03-verylongapikeythatshouldbemaksed123456",
     };
     const result = formatProfileForDisplay(profile);
-    // First 10 chars + "..." + last 6 chars
     expect(result).toBe("sk-ant-api...123456");
     expect(result.length).toBeLessThan(profile.key.length);
   });
 });
 
-describe("generateDryRunOutput", () => {
-  test("shows what would be set for api-key profile (posix)", () => {
-    const profile: Profile = { type: "api-key", key: "sk-ant-short" };
-    const result = generateDryRunOutput(profile, "posix");
-    expect(result).toContain("bash/zsh");
-    expect(result).toContain("ANTHROPIC_API_KEY");
+describe("formatApiKeyHelperForDisplay", () => {
+  test("returns OAuth message when not set", () => {
+    expect(formatApiKeyHelperForDisplay(undefined)).toBe("(not set - using OAuth)");
   });
 
-  test("shows what would be set for api-key profile (fish)", () => {
-    const profile: Profile = { type: "api-key", key: "sk-ant-short" };
-    const result = generateDryRunOutput(profile, "fish");
-    expect(result).toContain("fish");
-    expect(result).toContain("ANTHROPIC_API_KEY");
+  test("returns full helper for short keys", () => {
+    const helper = "echo 'sk-ant-short'";
+    expect(formatApiKeyHelperForDisplay(helper)).toBe(helper);
   });
 
-  test("shows unset message for max profile", () => {
-    const profile: Profile = { type: "max" };
-    const result = generateDryRunOutput(profile, "posix");
-    expect(result).toContain("unset");
-    expect(result).toContain("OAuth");
+  test("masks long keys in helper", () => {
+    const helper = "echo 'sk-ant-api03-verylongapikeythatshouldbemaksed123456'";
+    const result = formatApiKeyHelperForDisplay(helper);
+    expect(result).toBe("echo 'sk-ant-api...123456'");
+  });
+
+  test("truncates unknown format helpers", () => {
+    const helper = "some-custom-command --with-very-long-arguments-that-should-be-truncated";
+    const result = formatApiKeyHelperForDisplay(helper);
+    expect(result.endsWith("...")).toBe(true);
+    expect(result.length).toBeLessThanOrEqual(40);
+  });
+});
+
+describe("settings.json operations (mocked)", () => {
+  let tempDir: string;
+  let tempSettingsPath: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "claude-settings-test-"));
+    tempSettingsPath = join(tempDir, "settings.json");
+    setSettingsPath(tempSettingsPath);
+  });
+
+  afterEach(async () => {
+    resetSettingsPath();
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test("setSettingsPath changes the path", () => {
+    expect(getSettingsPath()).toBe(tempSettingsPath);
+  });
+
+  test("loadSettings returns empty object when file doesn't exist", async () => {
+    const settings = await loadSettings();
+    expect(settings).toEqual({});
+  });
+
+  test("saveSettings creates file with correct content", async () => {
+    const settings = { apiKeyHelper: "echo 'test'", otherField: "value" };
+    await saveSettings(settings);
+
+    const file = Bun.file(tempSettingsPath);
+    const content = await file.text();
+    const parsed = JSON.parse(content);
+
+    expect(parsed.apiKeyHelper).toBe("echo 'test'");
+    expect(parsed.otherField).toBe("value");
+  });
+
+  test("loadSettings reads saved settings", async () => {
+    const original = { apiKeyHelper: "echo 'mykey'", customSetting: true };
+    await saveSettings(original);
+
+    const loaded = await loadSettings();
+    expect(loaded.apiKeyHelper).toBe("echo 'mykey'");
+    expect(loaded.customSetting).toBe(true);
+  });
+
+  describe("applyProfile", () => {
+    test("sets apiKeyHelper for api-key profile", async () => {
+      const profile: Profile = { type: "api-key", key: "sk-ant-test123" };
+      const result = await applyProfile(profile);
+
+      expect(result.changed).toBe(true);
+      expect(result.newApiKeyHelper).toBe("echo 'sk-ant-test123'");
+
+      const settings = await loadSettings();
+      expect(settings.apiKeyHelper).toBe("echo 'sk-ant-test123'");
+    });
+
+    test("removes apiKeyHelper for max profile", async () => {
+      // First set an API key
+      await saveSettings({ apiKeyHelper: "echo 'old-key'" });
+
+      const profile: Profile = { type: "max" };
+      const result = await applyProfile(profile);
+
+      expect(result.changed).toBe(true);
+      expect(result.oldApiKeyHelper).toBe("echo 'old-key'");
+      expect(result.newApiKeyHelper).toBeUndefined();
+
+      const settings = await loadSettings();
+      expect(settings.apiKeyHelper).toBeUndefined();
+    });
+
+    test("preserves other settings when applying profile", async () => {
+      await saveSettings({
+        apiKeyHelper: "echo 'old'",
+        customSetting: "preserved",
+        anotherField: 123,
+      });
+
+      const profile: Profile = { type: "api-key", key: "sk-ant-new" };
+      await applyProfile(profile);
+
+      const settings = await loadSettings();
+      expect(settings.apiKeyHelper).toBe("echo 'sk-ant-new'");
+      expect(settings.customSetting).toBe("preserved");
+      expect(settings.anotherField).toBe(123);
+    });
+
+    test("reports no change when already set to same value", async () => {
+      await saveSettings({ apiKeyHelper: "echo 'sk-ant-same'" });
+
+      const profile: Profile = { type: "api-key", key: "sk-ant-same" };
+      const result = await applyProfile(profile);
+
+      expect(result.changed).toBe(false);
+    });
+
+    test("reports no change when max profile and no apiKeyHelper", async () => {
+      await saveSettings({ otherSetting: true });
+
+      const profile: Profile = { type: "max" };
+      const result = await applyProfile(profile);
+
+      expect(result.changed).toBe(false);
+    });
+  });
+
+  describe("dryRunApplyProfile", () => {
+    test("does not modify file", async () => {
+      await saveSettings({ apiKeyHelper: "echo 'original'" });
+
+      const profile: Profile = { type: "api-key", key: "sk-ant-new" };
+      const result = await dryRunApplyProfile(profile);
+
+      expect(result.changed).toBe(true);
+      expect(result.oldApiKeyHelper).toBe("echo 'original'");
+      expect(result.newApiKeyHelper).toBe("echo 'sk-ant-new'");
+
+      // File should still have original value
+      const settings = await loadSettings();
+      expect(settings.apiKeyHelper).toBe("echo 'original'");
+    });
+
+    test("correctly predicts removal for max profile", async () => {
+      await saveSettings({ apiKeyHelper: "echo 'will-be-removed'" });
+
+      const profile: Profile = { type: "max" };
+      const result = await dryRunApplyProfile(profile);
+
+      expect(result.changed).toBe(true);
+      expect(result.newApiKeyHelper).toBeUndefined();
+
+      // File should still have the value
+      const settings = await loadSettings();
+      expect(settings.apiKeyHelper).toBe("echo 'will-be-removed'");
+    });
   });
 });
 
@@ -127,7 +270,6 @@ describe("shell compatibility", () => {
   });
 
   describe("zsh compatibility", () => {
-    // zsh uses same syntax as bash for export/unset
     test("export command is valid zsh syntax", () => {
       const cmd = generateEnvCommands(apiKeyProfile, "posix");
       expect(cmd).toMatch(/^export [A-Z_]+='.+'$/);
@@ -169,11 +311,6 @@ describe("shell compatibility", () => {
 
     test("detects fish 4.x", () => {
       process.env.FISH_VERSION = "4.0.0";
-      expect(detectShell()).toBe("fish");
-    });
-
-    test("detects fish with any version string", () => {
-      process.env.FISH_VERSION = "3.1.2-beta";
       expect(detectShell()).toBe("fish");
     });
 

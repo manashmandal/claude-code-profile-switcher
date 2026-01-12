@@ -5,9 +5,9 @@ import {
   setActiveProfile,
 } from "../config";
 import {
-  generateEnvCommands,
-  generateDryRunOutput,
-  detectShell,
+  applyProfile,
+  dryRunApplyProfile,
+  formatApiKeyHelperForDisplay,
 } from "../settings";
 
 export async function switchProfile(
@@ -56,25 +56,25 @@ export async function switchProfile(
   }
 
   if (options.dryRun) {
-    console.error(`\nDry run for profile '${targetName}':\n`);
-    console.error(generateDryRunOutput(profile));
-    console.error("\nNo changes made (dry run)");
+    const result = await dryRunApplyProfile(profile);
+    console.log(`\nDry run for profile '${targetName}':\n`);
+    console.log(`File: ${result.settingsPath}`);
+    console.log(`  apiKeyHelper: ${formatApiKeyHelperForDisplay(result.oldApiKeyHelper)} → ${formatApiKeyHelperForDisplay(result.newApiKeyHelper)}`);
+    if (result.changed) {
+      console.log("\nNo changes made (dry run)");
+    } else {
+      console.log("\nNo changes needed (already set)");
+    }
     return;
   }
 
-  // Update active profile in config
+  const result = await applyProfile(profile);
   await setActiveProfile(targetName);
 
-  // Output the env command (to stdout for eval)
-  console.log(generateEnvCommands(profile));
-
-  // Info message to stderr so it doesn't interfere with eval
   const typeLabel = profile.type === "max" ? "Max plan" : "API key";
-  const shell = detectShell();
-  const evalHint = shell === "fish"
-    ? `eval (claude-profile ${targetName})`
-    : `eval $(claude-profile ${targetName})`;
+  console.log(`Switched to profile '${targetName}' (${typeLabel})`);
 
-  console.error(`Switched to profile '${targetName}' (${typeLabel})`);
-  console.error(`Run: ${evalHint}`);
+  if (result.changed) {
+    console.log(`Updated: ${result.settingsPath}`);
+  }
 }
